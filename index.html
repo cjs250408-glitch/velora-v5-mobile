@@ -1,0 +1,120 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VELORA V5</title>
+<style>
+body{background:#0b1020;color:#fff;font-family:Arial;margin:0;padding:18px}
+h1{color:#6ee7b7}
+.card{background:#192238;border-radius:14px;padding:18px;margin:14px 0}
+small{color:#aab5c8}
+button{background:#34d399;color:#07111b;border:0;border-radius:9px;padding:12px;margin:5px;font-weight:bold}
+button:disabled{opacity:.4}
+input{width:70px;padding:9px}
+#log{white-space:pre-wrap;font-size:13px}
+</style>
+</head>
+<body>
+<h1>VELORA V5</h1>
+<p>Paper Trading Dashboard</p>
+<div class="card">
+<small>Virtual Portfolio Value</small>
+<h1 id="equity">£100.00</h1>
+<p>Cash: <span id="cash">£100.00</span></p>
+<p>BTC holdings: <span id="btc">0</span></p>
+</div>
+<div class="card">
+<h3>Kraken BTC/GBP</h3>
+<h2 id="price">Loading...</h2>
+<p id="status">Connecting to public data...</p>
+<button onclick="getPrice()">Refresh Price</button>
+</div>
+<div class="card">
+<h3>Simulated Trading</h3>
+<p>Trade size (£):
+<input id="amount" type="number" value="5" min="1" max="5"></p>
+<button onclick="trade('buy')">Paper Buy</button>
+<button onclick="trade('sell')">Paper Sell</button>
+<p><small>Maximum £5 per trade. No leverage.</small></p>
+</div>
+<div class="card">
+<h3>Safety Controls</h3>
+<p>Live trading: DISABLED</p>
+<p>Maximum virtual capital: £100</p>
+<p>Maximum position: £20</p>
+<p>Daily loss limit: £5</p>
+<p>Trading fees: 0.4% simulated</p>
+</div>
+<div class="card">
+<h3>Activity</h3>
+<div id="log">No trades yet.</div>
+</div>
+<script>
+let cash=100,btc=0,price=0;
+let startEquity=100;
+let day=new Date().toDateString();
+const fee=.004;
+const el=id=>document.getElementById(id);
+const gbp=n=>"£"+n.toFixed(2);
+function equity(){return cash+btc*price}
+function render(){
+el("cash").textContent=gbp(cash);
+el("btc").textContent=btc.toFixed(8);
+el("equity").textContent=gbp(equity());
+}
+async function getPrice(){
+try{
+const r=await fetch(
+"https://api.kraken.com/0/public/Ticker?pair=XBTGBP"
+);
+if(!r.ok)throw Error("Network error");
+const d=await r.json();
+if(d.error?.length)throw Error(d.error.join(","));
+const p=Number(Object.values(d.result)[0].c[0]);
+if(!Number.isFinite(p)||p<=0)throw Error("Invalid price");
+price=p;
+el("price").textContent=gbp(price);
+el("status").textContent="Public market data available";
+render();
+}catch(e){
+price=0;
+el("price").textContent="Unavailable";
+el("status").textContent="Price feed error: "+e.message;
+render();
+}
+}
+function trade(side){
+if(!price)return alert("Refresh market price first");
+const today=new Date().toDateString();
+if(today!==day){
+day=today;startEquity=equity();
+}
+if(equity()<=startEquity-5)
+return alert("Daily loss limit reached");
+const amount=Number(el("amount").value);
+if(!Number.isFinite(amount)||amount<1||amount>5)
+return alert("Trade must be £1 to £5");
+if(side==="buy"){
+if(amount>cash)return alert("Not enough virtual cash");
+if(btc*price+amount*(1-fee)>20)
+return alert("Maximum position is £20");
+cash-=amount;
+btc+=amount*(1-fee)/price;
+}else{
+const qty=amount/price;
+if(qty>btc+1e-12)return alert("Not enough BTC");
+btc=Math.max(0,btc-qty);
+cash+=amount*(1-fee);
+}
+const line=side.toUpperCase()+" "+gbp(amount)+
+" @ "+gbp(price)+" (simulated)";
+el("log").textContent=line+"\n"+el("log").textContent;
+render();
+}
+getPrice();
+setInterval(getPrice,30000);
+</script>
+</body>
+</html>
